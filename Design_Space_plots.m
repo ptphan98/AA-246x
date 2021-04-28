@@ -18,41 +18,36 @@ Span_lo = .5; %m
 V_cruise_lo = 0; %m/s
 
 W_L_up = 10; %Kg/m^2
-Weight_up = +Inf; %Kg
+Weight_up = 10; %Kg
 Span_up = +Inf; %m
-V_cruise_up = 60; %m/s
+V_cruise_up = 10:1:50; %m/s
 
-x_0 = [5, 2, 2, 30];
-A = [];
-b = [];
-Aeq = [];
-beq = [];
-lb = [W_L_lo,Weight_lo,Span_lo,V_cruise_lo];
-ub = [W_L_up,Weight_up,Span_up,V_cruise_up];
+W_L_op = zeros(1,length(V_cruise_up));
+weight_op = zeros(1,length(V_cruise_up));
+b_op = zeros(1,length(V_cruise_up));
+v_cruise_op = zeros(1,length(V_cruise_up));
 
-x = fmincon( @(x) optimize( x(1),x(2),x(3),x(4)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3),x(4) ) );
+for i = 1:length(V_cruise_up)
 
-W_L_op = x(1)
-weight_op = x(2)
-b_op = x(3)
-v_cruise_op = x(4)
-AR = b_op^2/(weight_op/W_L_op)
+    x_0 = [5, 2, 2, 30];
+    A = [];
+    b = [];
+    Aeq = [];
+    beq = [];
+    lb = [W_L_lo,Weight_lo,Span_lo,V_cruise_lo];
+    ub = [W_L_up,Weight_up,Span_up,V_cruise_up(i)];
 
-%show optimized aircraft 
-[mass_total, mass_bat, mass_motor, mass_empty,T_W] = calc_weight(W_L_op, weight_op, b_op, v_cruise_op);
-[mass_motor,T_W,Thrust] = motor_weight(W_L_op, weight_op, b_op, v_cruise_op);
-[CL, Cd, Cdi , Cd0, L_D, v_ideal] = calc_aero(W_L_op, weight_op, b_op, v_cruise_op);
-[S_ref, c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(W_L_op, weight_op, b_op, v_cruise_op);
-[time,x_p,y_p,y_min] = calc_takeoff(W_L_op, weight_op, b_op, v_cruise_op);
-[bend_stress,deflection_span] = calc_beam(W_L_op, weight_op, b_op, v_cruise_op);
-[c, ceq] = nonl_const(W_L_op, weight_op, b_op, v_cruise_op);
+    x = fmincon( @(x) optimize( x(1),x(2),x(3),x(4)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3),x(4) ) );
 
-battery_frac = mass_bat/mass_total
-motor_frac = mass_motor/mass_total
-structural_frac = mass_empty/mass_total
-plot_aircraft(W_L_op, weight_op, b_op, v_cruise_op)
+    W_L_op(i) = x(1);
+    weight_op(i) = x(2);
+    b_op(i) = x(3);
+    v_cruise_op(i) = x(4);
+    
+    i
+end
 
-
+save('design_space_plot_data')
 %% plot aircraft 
 function [] = plot_aircraft(W_L, weight, b, v_cruise)
     boom_dia = 0.0154; %m - visual purpose only
@@ -309,5 +304,6 @@ function [time,x_p,y_p,y_min] = calc_takeoff(W_L, weight, b, v_air)
         dxdt(4) = 1/(2*weight)*rho*x(2)^2*Cl_max*S_ref - g; %acceleration 
     end
 end
+
 
 
