@@ -14,28 +14,28 @@ rho = 1.225; %kg/m^3
 %attempt an optimization with constraints
 W_L_lo = 0; %Kg/m^2
 Weight_lo = 0; %Kg
-Span_lo = .5; %m
+Span_lo = 0.1:0.05:1; %m
 V_cruise_lo = 0; %m/s
 
 W_L_up = 10; %Kg/m^2
 Weight_up = 10; %Kg
 Span_up = +Inf; %m
-V_cruise_up = 10:1:50; %m/s
+V_cruise_up = +Inf; %m/s
 
-W_L_op = zeros(1,length(V_cruise_up));
-weight_op = zeros(1,length(V_cruise_up));
-b_op = zeros(1,length(V_cruise_up));
-v_cruise_op = zeros(1,length(V_cruise_up));
+W_L_op = zeros(1,length(Span_lo));
+weight_op = zeros(1,length(Span_lo));
+b_op = zeros(1,length(Span_lo));
+v_cruise_op = zeros(1,length(Span_lo));
 
-for i = 1:length(V_cruise_up)
+for i = 1:length(Span_lo)
 
     x_0 = [5, 2, 2, 30];
     A = [];
     b = [];
-    Aeq = [];
-    beq = [];
-    lb = [W_L_lo,Weight_lo,Span_lo,V_cruise_lo];
-    ub = [W_L_up,Weight_up,Span_up,V_cruise_up(i)];
+    Aeq = [0 0 1 0];
+    beq = [Span_lo(i)];
+    lb = [W_L_lo,Weight_lo,0,V_cruise_lo];
+    ub = [W_L_up,Weight_up,Span_up,V_cruise_up];
 
     x = fmincon( @(x) optimize( x(1),x(2),x(3),x(4)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3),x(4) ) );
 
@@ -99,10 +99,11 @@ function [c, ceq] = nonl_const(W_L, weight, b, v_air)
     
     %constrain aspect ratio
     AR_lower = 3.5;
+    AR_upper = 15;
 
     max_stress = 3.5*10^9; %failure stress of carbon fiber - assume 3.5 GPa;
     
-    c = [- AR + AR_lower,-y_min, bend_stress - max_stress];
+    c = [- AR + AR_lower, AR - AR_upper, -y_min, bend_stress - max_stress];
     ceq = abs(weight-mass_total);
 end
 

@@ -14,15 +14,15 @@ rho = 1.225; %kg/m^3
 %attempt an optimization with constraints
 W_L_lo = 0; %Kg/m^2
 Weight_lo = 0; %Kg
-Span_lo = .5; %m
+Span_lo = .1; %m
 V_cruise_lo = 0; %m/s
 
-W_L_up = 10; %Kg/m^2
+W_L_up = 7; %Kg/m^2
 Weight_up = +Inf; %Kg
 Span_up = +Inf; %m
-V_cruise_up = 60; %m/s
+V_cruise_up = 100; %m/s
 
-x_0 = [5, 2, 2, 30];
+x_0 = [7, 1.0984, 0.8630, 42.6765];
 A = [];
 b = [];
 Aeq = [];
@@ -30,7 +30,8 @@ beq = [];
 lb = [W_L_lo,Weight_lo,Span_lo,V_cruise_lo];
 ub = [W_L_up,Weight_up,Span_up,V_cruise_up];
 
-x = fmincon( @(x) optimize( x(1),x(2),x(3),x(4)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3),x(4) ) );
+options = optimoptions('fmincon','Algorithm','sqp');
+x = fmincon( @(x) optimize( x(1),x(2),x(3),x(4)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3),x(4) ),options );
 
 W_L_op = x(1)
 weight_op = x(2)
@@ -40,7 +41,7 @@ AR = b_op^2/(weight_op/W_L_op)
 
 %show optimized aircraft 
 [mass_total, mass_bat, mass_motor, mass_empty,T_W] = calc_weight(W_L_op, weight_op, b_op, v_cruise_op);
-[mass_motor,T_W,Thrust] = motor_weight(W_L_op, weight_op, b_op, v_cruise_op);
+[mass_motor,T_W,Thrust,Power_max,Power_cruise] = motor_weight(W_L_op, weight_op, b_op, v_cruise_op);
 [CL, Cd, Cdi , Cd0, L_D, v_ideal] = calc_aero(W_L_op, weight_op, b_op, v_cruise_op);
 [S_ref, c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(W_L_op, weight_op, b_op, v_cruise_op);
 [time,x_p,y_p,y_min] = calc_takeoff(W_L_op, weight_op, b_op, v_cruise_op);
@@ -89,14 +90,13 @@ function score = optimize(W_L, weight, b, v_air)
     [mass_total, mass_bat, mass_motor, mass_empty] = calc_weight(W_L, weight, b, v_air);
     [CL, Cd, Cdi , Cd0, L_D, v_ideal] = calc_aero(W_L, weight, b, v_air);
 
-    score = -v_air; %maximize velocity given constraints
+    score = -v_air; %maximize velocity and minimize weight
 end
 
 % nonlinear constraints
 function [c, ceq] = nonl_const(W_L, weight, b, v_air)
     [mass_total, mass_bat, mass_motor, mass_empty] = calc_weight(W_L, weight, b, v_air);
     [CL, Cd, Cdi , Cd0, L_D, v_ideal] = calc_aero(W_L, weight, b, v_air);
-    [time,x_p,y_p,y_min] = calc_takeoff(W_L, weight, b, v_air);
     [bend_stress,deflection_span] = calc_beam(W_L, weight, b, v_air);
     
     S_ref = weight./W_L;
@@ -104,10 +104,11 @@ function [c, ceq] = nonl_const(W_L, weight, b, v_air)
     
     %constrain aspect ratio
     AR_lower = 3.5;
+    AR_upper = 15;
 
-    max_stress = 3.5*10^9; %failure stress of carbon fiber - assume 3.5 GPa;
+    max_stress = 570*10^6; %failure stress of carbon fiber - assume 570 MPa;
     
-    c = [- AR + AR_lower,-y_min, bend_stress - max_stress];
+    c = [- AR + AR_lower, AR - AR_upper, bend_stress - max_stress];
     ceq = abs(weight-mass_total);
 end
 
@@ -173,12 +174,12 @@ v_ideal = sqrt( (2*9.81*weight)/(rho*Cl_opt*S_ref) );
         %flat plate assumption for Cf
         nu = 15.52e-6; %m^2/s
         Re = v_air.*l./nu;
-        
-        if Re > 5e5
-            CF = 0.455./(log10(Re).^2.58);
-        else
-            CF = 1.328./sqrt(Re);
-        end
+        CF = 0.455./(log10(Re).^2.58); %assume airflow always laminar
+%         if Re > 5e5
+%             CF = 0.455./(log10(Re).^2.58);
+%         else
+%             CF = 1.328./sqrt(Re);
+%         end
     end
 end
 
@@ -193,7 +194,7 @@ function [mass_bat] = battery_weight(W_L, weight, b, v_air)
     mass_bat = range.*g.*weight./(L_D.*eta_sys.*H_batt);
 end
 
-function [mass_motor,T_W,Thrust,Power_max] = motor_weight(W_L, weight, b, v_air)
+function [mass_motor,T_W,Thrust,Power_max,Power_cruise] = motor_weight(W_L, weight, b, v_air)
     global rho
     S_ref = weight./W_L;
     
@@ -201,7 +202,10 @@ function [mass_motor,T_W,Thrust,Power_max] = motor_weight(W_L, weight, b, v_air)
     [CL, Cd, Cdi , Cd0, L_D, v_ideal] = calc_aero(W_L, weight, b, v_air);
     Thrust = 1/2.*rho.*v_air.^2.*S_ref.*(Cd); %Newtons
     Power_cruise = 1/2.*rho.*v_air.^3.*S_ref.*(Cd); %watts
-    Power_max = Power_cruise./0.40; %assume motor runs most efficient at 40% max power
+    
+    %assume motor power is 2x mechanical power
+    %assume motor runs most efficient at 40% max power
+    Power_max = 2*Power_cruise./0.40; 
     
     motor_p_density = 5.101/0.001; %watts/kg of a motor 
     T_W = Thrust*2/(weight*9.81); %static thrust to weight. assume static is twice cruise thrust 
@@ -229,8 +233,8 @@ function [mass_total, mass_bat, mass_motor, mass_empty, T_W] = calc_weight(W_L, 
     [mass_bat] = battery_weight(W_L, weight, b, v_air);
     [mass_motor,T_W] = motor_weight(W_L, weight, b, v_air);
     [mass_empty] = empty_weight(W_L, weight, b, v_air);
-    
-    mass_total = mass_bat + mass_motor + mass_empty;
+    fixed_mass = .218;
+    mass_total = mass_bat + mass_motor + mass_empty + fixed_mass;
 end
 
 function [bend_stress,deflection_span] = calc_beam(W_L, weight, b, v_air)
@@ -269,7 +273,7 @@ I_c = pi/4*r_spar^4;   %2nd moment of inertia
 bend_stress = max(moment)*r_spar/I_c;
 
 %find deflection
-E = 228*10^9; %modulus of carbon fiber - 228 GPa
+E = 70*10^9; %modulus of carbon fiber - 70 GPa
 
 d2v_dx2 = moment/(E*I_c);
 rotation = cumtrapz(x,d2v_dx2);

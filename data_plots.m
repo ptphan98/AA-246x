@@ -1,10 +1,10 @@
 load('design_space_plot_data');
 figure;
-plot(v_cruise_op,W_L_op)
+plot(b_op,v_cruise_op)
 
 figure;
-plot(v_cruise_op,weight_op)
+plot(b_op,weight_op)
 
 figure;
-plot(v_cruise_op,b_op)
+plot(b_op,W_L_op)
 
