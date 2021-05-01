@@ -99,14 +99,14 @@ function [c, ceq] = nonl_const(weight, b, v_air)
     
     %Wing Structure Constraints
     max_stress = 1.8*10^9; %failure stress of Carbonfiber
-    max_deflection_span = .10; %tip should not deflection more than 10% span.
+    
     
     %constrain aspect ratio
     AR = b.^2./S_ref;
     AR_lower = 0;
     AR_upper = 20;
 
-    c = [- AR + AR_lower, AR - AR_upper, sigma_max - max_stress,deflection_span-max_deflection_span];
+    c = [- AR + AR_lower, AR - AR_upper, sigma_max - max_stress,deflection_span-];
     ceq = [mass_total - weight];
 end
 
