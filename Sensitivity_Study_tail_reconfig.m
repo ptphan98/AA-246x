@@ -1,5 +1,4 @@
 clc;
-close all;
 clear all;
 % ALL UNITS IN SI %
 % Input Parameters to optimize:
@@ -14,61 +13,78 @@ cst.g = 9.807; %m/s^2
 cst.CL_max = 1.2;
 cst.V_stall = 7; %m/s
 cst.W_L = 1/2 * cst.rho * cst.V_stall^2 * cst.CL_max / cst.g; % wing loading is sized by stall speed
+cst.fuse_ratio = 6; %fuselage length to chord ratio
 cst.spar_ratio = .5; %percent spar of max airfoil thickness
 [~,cst.xin,cst.yin]=openfile('naca0008.dat'); %WING AIRFOIL, EDIT
 [~,cst.xtin,cst.ytin]=openfile('naca0008.dat'); %TAIL AIRFOIL, EDIT
 
-%walrus
-%mass_empty = empty_weight(0.19734, .715*2);
-%plot_aircraft(0.19734, .715*2);
+weights = 1:.5:20;
+results = zeros(length(weights),3);
 
-% Lower and upper bounds
-Weight_lo = 0; %Kg
-Span_lo = 0.1; %m
-V_cruise_lo = 0; %m/s
+%calc at 8 percent thickness
+for i = 1:length(weights)
+    % Lower and upper bounds
+    Weight_lo = 0; %Kg
+    Span_lo = .1; %m
+    V_cruise_lo = 0; %m/s
 
-Weight_up = 2.26796; %Kg - 5 lb constraint
-Span_up = +Inf; %m
-V_cruise_up = +Inf; %m/s
+    Weight_up = weights(i); %Kg
+    Span_up = +Inf; %m
+    V_cruise_up = +Inf; %m/s
 
-x_0 = [Weight_up,2,24];
-A = [];
-b = [];
-Aeq = [];
-beq = [];
-lb = [Weight_lo,Span_lo,V_cruise_lo];
-ub = [Weight_up,Span_up,V_cruise_up];
+    x_0 = [weights(i),2,25];
+    A = [];
+    b = [];
+    Aeq = [];
+    beq = [];
+    lb = [Weight_lo,Span_lo,V_cruise_lo];
+    ub = [Weight_up,Span_up,V_cruise_up];
 
-options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
-%options = optimoptions('fmincon','MaxFunctionEvaluation', 10000);
-x = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options);
+    options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
+    results(i,:) = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options );
+end
+plot(weights,results(:,3))
+title('Weight Sensitivity Study')
+xlabel('Weight (kg)')
+ylabel('Speed (m/s)')
+hold on 
+legend('span based','chord based')
 
-%show optimized aircraft 
-weight = x(1);
-b = x(2);
-v_cruise = x(3);
-AR = b^2/(weight/cst.W_L);
-S_ref = weight / cst.W_L;
-
-[CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_cruise);
-[sigma_max, deflection_span] = calc_beam(S_ref, weight, b);
-mass_empty = empty_weight(S_ref, b);
-[mass_bat] = battery_weight(weight, L_D);
-[mass_motor,T_W,Power_max] = motor_weight(weight, Drag, v_cruise);
-mass_total = mass_bat + mass_motor + mass_empty;
-
-battery_frac = mass_bat/mass_total
-motor_frac = mass_motor/mass_total
-structural_frac = mass_empty/mass_total
-
-plot_aircraft(S_ref, b)
+% [~,cst.xin,cst.yin]=openfile('naca0010.dat'); %WING AIRFOIL, EDIT
+% %cst.spar_ratio = .75;
+% for i = 1:length(weights)
+%     % Lower and upper bounds
+%     Weight_lo = 0; %Kg
+%     Span_lo = .1; %m
+%     V_cruise_lo = 0; %m/s
+% 
+%     Weight_up = weights(i); %Kg
+%     Span_up = +Inf; %m
+%     V_cruise_up = +Inf; %m/s
+% 
+%     x_0 = [weights(i),2,25];
+%     A = [];
+%     b = [];
+%     Aeq = [];
+%     beq = [];
+%     lb = [Weight_lo,Span_lo,V_cruise_lo];
+%     ub = [Weight_up,Span_up,V_cruise_up];
+% 
+%     options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
+%     results(i,:) = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options );
+% end
+% plot(weights,results(:,3))
+% legend('8 Percent T/C','10 Percent T/C')
+% pbaspect([1.5 1 1]);
+% improvePlot
 
 %% plot aircraft 
 function [] = plot_aircraft(S_ref, b)
+    global cst
     [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b);
     
     %estimate fuselage area
-    l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
+    l_fus = cst.fuse_ratio*c; %ballpark for fuselage length. RC airplanes typically 75% of span
     r_fus = l_fus./8./2; %assume fuselage fineness ratio of 8
 
     %we model the fuselage as cone nose and cylinder fuselage
@@ -119,6 +135,7 @@ end
 %% aircraft sizing functions
 
 function [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b)
+global cst
 %gives conventional tail dimensions based on wing geometry
 %guess some typical values for tail parameters
 static_margin = 0.05;
@@ -128,8 +145,8 @@ AR_ht = 4;
 AR_vt = 1.5; 
 
 c = S_ref./b; %mean chord estimate
-l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
-l_t = 0.75.*l_fus; %ballpark for length of 1/4 chord to 1/4 tail chord. Should be optimized for weight!
+l_fus = cst.fuse_ratio*c; %ballpark for fuselage length. RC airplanes typically 75% of span
+l_t = 4*c; %ballpark for length of 1/4 chord to 1/4 tail chord. Should be optimized for weight!
 
 s_htail = ht_vol_cf.*S_ref.*c./l_t;
 c_htail = sqrt(s_htail./AR_ht);
@@ -149,7 +166,7 @@ K = 1./(pi.*AR.*e);
 Cdi = CL.^2./(pi.*AR.*e); %lift induced drag
 
 %estimate fuselage area
-l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
+l_fus = cst.fuse_ratio*c; %ballpark for fuselage length. RC airplanes typically 75% of span
 r_fus = l_fus./8./2; %assume fuselage fineness ratio of 8
 
 %we model the fuselage as cone nose and cylinder fuselage
@@ -167,7 +184,7 @@ L_D = CL/Cd;
 %configuration
 Cl_opt = sqrt(Cd0/K);
 v_ideal = sqrt( (2*9.81*weight)/(cst.rho*Cl_opt*S_ref) );
-Drag = 1/2 * cst.rho * v_air^2 * S_ref * Cd;
+Drag = 1/2 * cst.rho * v_air^2 * S_ref * Cd; %Newtons
 
     function CF = calc_Cf(l,v_air)
         %flat plate assumption for Cf
@@ -215,7 +232,7 @@ function [mass_empty] = empty_weight(S_ref, b)
     %To account for fuselage structure, assume fuselage covered in 1.4 oz
     %fiberglass
     
-    l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
+    l_fus = cst.fuse_ratio*c; %ballpark for fuselage length. RC airplanes typically 75% of span
     r_fus = l_fus./8./2; %assume fuselage fineness ratio of 8
     wall_thick = 0.005; %assume fuselage wall thickness is .5 cm of foam
     vol_fuse = ((pi.*r_fus^2)-(pi.*(r_fus-wall_thick)^2))*l_fus; 

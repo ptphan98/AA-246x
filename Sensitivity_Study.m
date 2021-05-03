@@ -1,5 +1,4 @@
 clc;
-close all;
 clear all;
 % ALL UNITS IN SI %
 % Input Parameters to optimize:
@@ -43,38 +42,40 @@ for i = 1:length(weights)
     options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
     results(i,:) = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options );
 end
+figure;
 plot(weights,results(:,3))
 title('Weight Sensitivity Study')
 xlabel('Weight (kg)')
 ylabel('Speed (m/s)')
 hold on 
 
-[~,cst.xin,cst.yin]=openfile('naca0010.dat'); %WING AIRFOIL, EDIT
-%cst.spar_ratio = .75;
-for i = 1:length(weights)
-    % Lower and upper bounds
-    Weight_lo = 0; %Kg
-    Span_lo = .1; %m
-    V_cruise_lo = 0; %m/s
-
-    Weight_up = weights(i); %Kg
-    Span_up = +Inf; %m
-    V_cruise_up = +Inf; %m/s
-
-    x_0 = [weights(i),2,25];
-    A = [];
-    b = [];
-    Aeq = [];
-    beq = [];
-    lb = [Weight_lo,Span_lo,V_cruise_lo];
-    ub = [Weight_up,Span_up,V_cruise_up];
-
-    options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
-    results(i,:) = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options );
-end
-plot(weights,results(:,3))
-legend('8 Percent T/C','10 Percent T/C')
-improvePlot
+% [~,cst.xin,cst.yin]=openfile('naca0010.dat'); %WING AIRFOIL, EDIT
+% %cst.spar_ratio = .75;
+% for i = 1:length(weights)
+%     % Lower and upper bounds
+%     Weight_lo = 0; %Kg
+%     Span_lo = .1; %m
+%     V_cruise_lo = 0; %m/s
+% 
+%     Weight_up = weights(i); %Kg
+%     Span_up = +Inf; %m
+%     V_cruise_up = +Inf; %m/s
+% 
+%     x_0 = [weights(i),2,25];
+%     A = [];
+%     b = [];
+%     Aeq = [];
+%     beq = [];
+%     lb = [Weight_lo,Span_lo,V_cruise_lo];
+%     ub = [Weight_up,Span_up,V_cruise_up];
+% 
+%     options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
+%     results(i,:) = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options );
+% end
+% plot(weights,results(:,3))
+% legend('8 Percent T/C','10 Percent T/C')
+% pbaspect([1.5 1 1]);
+% improvePlot
 
 %% plot aircraft 
 function [] = plot_aircraft(S_ref, b)

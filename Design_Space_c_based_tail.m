@@ -14,6 +14,7 @@ cst.g = 9.807; %m/s^2
 cst.CL_max = 1.2;
 cst.V_stall = 7; %m/s
 cst.W_L = 1/2 * cst.rho * cst.V_stall^2 * cst.CL_max / cst.g; % wing loading is sized by stall speed
+cst.fuse_ratio = 6; %fuselage length to chord ratio
 cst.spar_ratio = .5; %percent spar of max airfoil thickness
 [~,cst.xin,cst.yin]=openfile('naca0008.dat'); %WING AIRFOIL, EDIT
 [~,cst.xtin,cst.ytin]=openfile('naca0008.dat'); %TAIL AIRFOIL, EDIT
@@ -27,11 +28,11 @@ Weight_lo = 0; %Kg
 Span_lo = 0.1; %m
 V_cruise_lo = 0; %m/s
 
-Weight_up = 2.26796; %Kg - 5 lb constraint
+Weight_up = 2.3; %Kg
 Span_up = +Inf; %m
 V_cruise_up = +Inf; %m/s
 
-x_0 = [Weight_up,2,24];
+x_0 = [Weight_up,1.5,20];
 A = [];
 b = [];
 Aeq = [];
@@ -65,10 +66,11 @@ plot_aircraft(S_ref, b)
 
 %% plot aircraft 
 function [] = plot_aircraft(S_ref, b)
+    global cst
     [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b);
     
     %estimate fuselage area
-    l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
+    l_fus = cst.fuse_ratio*c; %ballpark for fuselage length. RC airplanes typically 75% of span
     r_fus = l_fus./8./2; %assume fuselage fineness ratio of 8
 
     %we model the fuselage as cone nose and cylinder fuselage
@@ -119,6 +121,7 @@ end
 %% aircraft sizing functions
 
 function [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b)
+global cst
 %gives conventional tail dimensions based on wing geometry
 %guess some typical values for tail parameters
 static_margin = 0.05;
@@ -128,8 +131,8 @@ AR_ht = 4;
 AR_vt = 1.5; 
 
 c = S_ref./b; %mean chord estimate
-l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
-l_t = 0.75.*l_fus; %ballpark for length of 1/4 chord to 1/4 tail chord. Should be optimized for weight!
+l_fus = cst.fuse_ratio*c; %ballpark for fuselage length. RC airplanes typically 75% of span
+l_t = 4*c; %ballpark for length of 1/4 chord to 1/4 tail chord. Should be optimized for weight!
 
 s_htail = ht_vol_cf.*S_ref.*c./l_t;
 c_htail = sqrt(s_htail./AR_ht);
@@ -149,7 +152,7 @@ K = 1./(pi.*AR.*e);
 Cdi = CL.^2./(pi.*AR.*e); %lift induced drag
 
 %estimate fuselage area
-l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
+l_fus = cst.fuse_ratio*c; %ballpark for fuselage length. RC airplanes typically 75% of span
 r_fus = l_fus./8./2; %assume fuselage fineness ratio of 8
 
 %we model the fuselage as cone nose and cylinder fuselage
@@ -167,7 +170,7 @@ L_D = CL/Cd;
 %configuration
 Cl_opt = sqrt(Cd0/K);
 v_ideal = sqrt( (2*9.81*weight)/(cst.rho*Cl_opt*S_ref) );
-Drag = 1/2 * cst.rho * v_air^2 * S_ref * Cd;
+Drag = 1/2 * cst.rho * v_air^2 * S_ref * Cd; %Newtons
 
     function CF = calc_Cf(l,v_air)
         %flat plate assumption for Cf
@@ -215,7 +218,7 @@ function [mass_empty] = empty_weight(S_ref, b)
     %To account for fuselage structure, assume fuselage covered in 1.4 oz
     %fiberglass
     
-    l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
+    l_fus = cst.fuse_ratio*c; %ballpark for fuselage length. RC airplanes typically 75% of span
     r_fus = l_fus./8./2; %assume fuselage fineness ratio of 8
     wall_thick = 0.005; %assume fuselage wall thickness is .5 cm of foam
     vol_fuse = ((pi.*r_fus^2)-(pi.*(r_fus-wall_thick)^2))*l_fus; 
