@@ -15,51 +15,37 @@ cst.CL_max = 1.2;
 cst.V_stall = 7; %m/s
 cst.W_L = 1/2 * cst.rho * cst.V_stall^2 * cst.CL_max / cst.g; % wing loading is sized by stall speed
 [~,cst.xin,cst.yin]=openfile('naca4412.dat'); %WING AIRFOIL, EDIT
-[~,cst.xtin,cst.ytin]=openfile('naca0010.dat'); %TAIL AIRFOIL, EDIT
+[~,cst.xtin,cst.ytin]=openfile('naca4412.dat'); %TAIL AIRFOIL, EDIT
 
-mass_empty = empty_weight(0.19734, .715*2)
-plot_aircraft(0.19734, .715*2)
-
-% Lower and upper bounds
-Weight_lo = 0; %Kg
-Span_lo = 0.1; %m
-V_cruise_lo = 0; %m/s
-
-Weight_up = +Inf; %Kg
-Span_up = +Inf; %m
-V_cruise_up = +Inf; %m/s
-
-x_0 = [1,2,20];
-A = [];
-b = [];
-Aeq = [];
-beq = [];
-lb = [Weight_lo,Span_lo,V_cruise_lo];
-ub = [Weight_up,Span_up,V_cruise_up];
-
-options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
-options = optimoptions('fmincon','MaxFunctionEvaluation', 10000);
-x = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options);
-
-%show optimized aircraft 
-weight = x(1);
-b = x(2);
-v_cruise = x(3);
-AR = b^2/(weight/cst.W_L);
-S_ref = weight / cst.W_L;
-
-[CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_cruise);
-[sigma_max, deflection_span] = calc_beam(S_ref, weight, b);
-mass_empty = empty_weight(S_ref, b);
-[mass_bat] = battery_weight(weight, L_D);
-[mass_motor,T_W,Power_max] = motor_weight(weight, Drag, v_cruise);
-mass_total = mass_bat + mass_motor + mass_empty;
-
-battery_frac = mass_bat/mass_total
-motor_frac = mass_motor/mass_total
-structural_frac = mass_empty/mass_total
-
-plot_aircraft(S_ref, b)
+% weights = 2:.5:10;
+% results = zeros(length(weights),3);
+% 
+% for i = 1:length(weights)
+%     % Lower and upper bounds
+%     Weight_lo = 0; %Kg
+%     Span_lo = .1; %m
+%     V_cruise_lo = 0; %m/s
+% 
+%     Weight_up = weights(i); %Kg
+%     Span_up = +Inf; %m
+%     V_cruise_up = +Inf; %m/s
+% 
+%     x_0 = [1.5,2,10];
+%     A = [];
+%     b = [];
+%     Aeq = [];
+%     beq = [];
+%     lb = [Weight_lo,Span_lo,V_cruise_lo];
+%     ub = [Weight_up,Span_up,V_cruise_up];
+% 
+%     options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
+%     results(i,:) = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options );
+% end
+% plot(weights,results(:,3))
+% title('Weight Sensitivity Study')
+% xlabel('Weight (kg)')
+% ylabel('Speed (m/s)')
+% improvePlot
 
 %% plot aircraft 
 function [] = plot_aircraft(S_ref, b)
@@ -110,7 +96,7 @@ function [c, ceq] = nonl_const(weight, b, v_air)
     AR_upper = 20;
 
     %c = [- AR + AR_lower, AR - AR_upper, sigma_max - max_stress,deflection_span-max_deflection_span];
-    c = [mass_total - weight];
+    c = [sigma_max - max_stress,deflection_span-max_deflection_span,mass_total - weight];
     ceq = [];
 end
 
@@ -232,8 +218,8 @@ function [mass_empty] = empty_weight(S_ref, b)
     ct = c;
     
     %Calculate Wing Spar Volume
-    t_c = .12; %assume a thickness to chord for the wing
-    r_o = 0.75*t_c*c/2; %m - estimate a thickness for the spar. Assume its .75 of the chord
+    t_c = .08; %assume a thickness to chord for the wing
+    r_o = 0.5*t_c*c/2; %m - estimate a thickness for the spar. 
     r_i = r_o - 0.0015875; %m - assume a constant wall thickness of 1/16 inch - from Dragonplate's website
     if r_i < 0
         r_i = 0; %make sure r_i isn't negative
@@ -272,8 +258,9 @@ function [mass_empty] = empty_weight(S_ref, b)
     at = polyarea(cst.xtin,cst.ytin); %m^2/m (chord)
     volt = 2*trapz(xtvec,at*ctvec); %m^3, total tail volume
     
-    %Calculate horizontal tail structure
-    sa_ht = 2*bt*crt;
+    %Calculate horizontal tail structure - assume covered in .7 oz
+    %fiberglass
+    sa_ht = 2*s_htail;
     m_ht_glass = sa_ht*rho_g_t;
     m_ht_glass = m_ht_glass + m_ht_glass/fiber_resin_ratio;
 
@@ -284,8 +271,9 @@ function [mass_empty] = empty_weight(S_ref, b)
     atv = polyarea(cst.xtin,cst.ytin); %m^2/m (chord)
     voltv = trapz(xtvvec,atv*ctvvec); %m^3, total tail volume
     
-    %Calculate horizontal tail structure
-    sa_vt = 2*btv*crtv;
+    %Calculate vertical tail structure - assume covered in .7 oz
+    %fiberglass
+    sa_vt = 2*s_vtail;
     m_vt_glass = sa_vt*rho_g_t;
     m_vt_glass = m_vt_glass + m_vt_glass/fiber_resin_ratio;
 
@@ -293,29 +281,24 @@ function [mass_empty] = empty_weight(S_ref, b)
     m_vtail = voltv * rho_f + m_vt_glass; %kg, tail vertical mass (assumes solid x section)
     
     %mass of electric components
-    m_elec = .100;  
+    m_elec = .200;  
     
-    m_fuse
-    m_wing
-    m_htail
-    m_ht_glass
-    m_vtail
-    m_vt_glass
+%     m_wing_foam = vol * rho_f
+%     m_fuse
+%     m_wing
+%     m_htail
+%     m_vtail
     
-    spar_wing = m_w_spar/m_wing
-    spar_t = m_ht_spar/m_htail
-    spar_vt = m_vt_spar/m_vtail
-    
-    mass_empty = m_fuse + m_wing + m_htail + m_vtail + m_elec
-    tes = 0
+    mass_empty = m_fuse + m_wing + m_htail + m_vtail + m_elec;
+
 end
 
 function [sigma_max, deflection_span] = calc_beam(S_ref, weight, b)
 
     %Spar Dimensions
-    t_c = .12; %assume a thickness to chord for the wing
+    t_c = .08; %assume a thickness to chord for the wing
     c = S_ref/b; %wing chord - m
-    r_o = 0.75*t_c*c/2; %m - estimate a thickness for the spar. Assume its .75 of the chord
+    r_o = 0.5*t_c*c/2; %m - estimate a thickness for the spar. 
     r_i = r_o - 0.0015875; %m - assume a constant wall thickness of 1/16 inch - from Dragonplate's website
     
     if r_i < 0

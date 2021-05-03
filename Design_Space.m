@@ -14,20 +14,23 @@ cst.g = 9.807; %m/s^2
 cst.CL_max = 1.2;
 cst.V_stall = 7; %m/s
 cst.W_L = 1/2 * cst.rho * cst.V_stall^2 * cst.CL_max / cst.g; % wing loading is sized by stall speed
-[~,cst.xin,cst.yin]=openfile('naca4412.dat'); %WING AIRFOIL, EDIT
-[~,cst.xtin,cst.ytin]=openfile('naca4412.dat'); %TAIL AIRFOIL, EDIT
+[~,cst.xin,cst.yin]=openfile('naca0008.dat'); %WING AIRFOIL, EDIT
+[~,cst.xtin,cst.ytin]=openfile('naca0008.dat'); %TAIL AIRFOIL, EDIT
 
+%walrus
+%mass_empty = empty_weight(0.19734, .715*2);
+%plot_aircraft(0.19734, .715*2);
 
 % Lower and upper bounds
 Weight_lo = 0; %Kg
-Span_lo = .1; %m
+Span_lo = 0.1; %m
 V_cruise_lo = 0; %m/s
 
-Weight_up = +Inf; %Kg
+Weight_up = 2; %Kg
 Span_up = +Inf; %m
-V_cruise_up = 50; %m/s
+V_cruise_up = +Inf; %m/s
 
-x_0 = [10,2,30];
+x_0 = [2,2,15];
 A = [];
 b = [];
 Aeq = [];
@@ -36,13 +39,14 @@ lb = [Weight_lo,Span_lo,V_cruise_lo];
 ub = [Weight_up,Span_up,V_cruise_up];
 
 options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
-x = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options );
+%options = optimoptions('fmincon','MaxFunctionEvaluation', 10000);
+x = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options);
 
 %show optimized aircraft 
-weight = x(1)
-b = x(2)
-v_cruise = x(3)
-AR = b^2/(weight/cst.W_L)
+weight = x(1);
+b = x(2);
+v_cruise = x(3);
+AR = b^2/(weight/cst.W_L);
 S_ref = weight / cst.W_L;
 
 [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_cruise);
@@ -98,7 +102,7 @@ function [c, ceq] = nonl_const(weight, b, v_air)
     mass_total = mass_bat + mass_motor + mass_empty;
     
     %Wing Structure Constraints
-    max_stress = 1.8*10^9; %failure stress of Carbonfiber
+    max_stress = 1.8*10^9; %failure stress of Carbon fiber
     max_deflection_span = .10; %tip should not deflection more than 10% span.
     
     %constrain aspect ratio
@@ -106,8 +110,9 @@ function [c, ceq] = nonl_const(weight, b, v_air)
     AR_lower = 0;
     AR_upper = 20;
 
-    c = [- AR + AR_lower, AR - AR_upper, sigma_max - max_stress,deflection_span-max_deflection_span];
-    ceq = [mass_total - weight];
+    %c = [- AR + AR_lower, AR - AR_upper, sigma_max - max_stress,deflection_span-max_deflection_span];
+    c = [sigma_max - max_stress,deflection_span-max_deflection_span,mass_total - weight];
+    ceq = [];
 end
 
 %% aircraft sizing functions
@@ -196,19 +201,28 @@ function [mass_empty] = empty_weight(S_ref, b)
     [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b);
     
     %%%% Material Properties
-    rho_boom = 0.046; %kg/m, 10mm x 10mm square carbon fiber spar
+    rho_cf = 2000; %kg/m^3, density of carbon fiber 
+    rho_g_f = 0.047468; %kg/m^2 - 1.4 oz/yd^2 fiberglass - fuselage
+    rho_g_t = 0.023734; %kg/m^2 - .7 oz/yd^2 fiberglass - tails
+    fiber_resin_ratio = 1; %assume fiber and resin weight equal
+    
     rho_f = 25.23; %oz/cu-ft, Foam density, potentially 40 
     rho_f = rho_f* 1.00115; %oz/cu-ft to kg/m^3
     
     %%%% CALCULATE FUSELAGE WEIGHT - Currently assumes a cylinder fuselage
     %assume fuselage wall thickness is 1 cm of foam
+    %To account for fuselage structure, assume fuselage covered in 1.4 oz
+    %fiberglass
+    
     l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
     r_fus = l_fus./8./2; %assume fuselage fineness ratio of 8
-    vol_fuse = ((pi.*r_fus^2)-(pi.*(r_fus-0.01)^2))*l_fus; %assume fuselage wall thickness is 1 cm of foam
-    m_fuse =  vol_fuse*rho_f;
+    wall_thick = 0.005; %assume fuselage wall thickness is .5 cm of foam
+    vol_fuse = ((pi.*r_fus^2)-(pi.*(r_fus-wall_thick)^2))*l_fus; 
+    sa_fuse = (2*pi*r_fus)*l_fus;
     
-    %%%% CALCULATE TAIL BOOM WEIGHT - Assume its the length of the fuselage
-    m_tailboom = l_fus*rho_boom;
+    m_fuse_glass = sa_fuse* rho_g_f;
+    m_fuse_glass = m_fuse_glass + m_fuse_glass/fiber_resin_ratio; %account for expoxy weight
+    m_fuse =  vol_fuse*rho_f + m_fuse_glass;
     
     %%%% WING CALCS, CURRENTLY ASSUMING RECTANGULAR SECTIONS. IF TAPERED
     %%%% DESIRED, JUST ADD MORE INPUTS TO FUNCTION AND EDIT
@@ -218,6 +232,16 @@ function [mass_empty] = empty_weight(S_ref, b)
     cr = c;
     ct = c;
     
+    %Calculate Wing Spar Volume
+    t_c = .08; %assume a thickness to chord for the wing
+    r_o = 0.5*t_c*c/2; %m - estimate a thickness for the spar. 
+    r_i = r_o - 0.0015875; %m - assume a constant wall thickness of 1/16 inch - from Dragonplate's website
+    if r_i < 0
+        r_i = 0; %make sure r_i isn't negative
+    end
+    vol_w_spar = ((pi*r_o^2)-(pi*r_i^2))*b;
+    m_w_spar = rho_cf*vol_w_spar;
+    
     xvec = linspace(0,b/2,10000); %m, x positions along wing starting from root to b/2
     cvec = ((b/2 - xvec)*cr + xvec*ct)*2/b; %m, chord at each x position along wing starting from root to b/2
 
@@ -226,7 +250,8 @@ function [mass_empty] = empty_weight(S_ref, b)
     %plot(xin,yin);
     a = polyarea(cst.xin,cst.yin); %m^2/m (chord)
     vol = 2*trapz(xvec,a*cvec); %m^3, total wing volume
-    m_wing = vol * rho_f + rho_boom * b; %kg, wing mass (assumes solid x section)
+    m_wing = vol * rho_f +  m_w_spar; %kg, wing mass (assumes solid x section)
+    
     
     %%%% TAIL CALCS, CURRENTLY ASSUMING RECTANGULAR SECTIONS. IF TAPERED
     %%%% DESIRED, JUST ADD MORE INPUTS TO FUNCTION AND EDIT
@@ -247,31 +272,54 @@ function [mass_empty] = empty_weight(S_ref, b)
     %plot(xtin,ytin);
     at = polyarea(cst.xtin,cst.ytin); %m^2/m (chord)
     volt = 2*trapz(xtvec,at*ctvec); %m^3, total tail volume
+    
+    %Calculate horizontal tail structure - assume covered in .7 oz
+    %fiberglass
+    sa_ht = 2*s_htail;
+    m_ht_glass = sa_ht*rho_g_t;
+    m_ht_glass = m_ht_glass + m_ht_glass/fiber_resin_ratio;
 
     %TAIL WEIGHT, VERTICAL
     xtvvec = linspace(0,btv,10000); %m, x positions along tail starting from root to btv
     ctvvec = ((btv - xtvvec)*crtv + xtvvec*cttv)/btv; %m, chord at each x position along tail starting from root to b/2
-
+    
     atv = polyarea(cst.xtin,cst.ytin); %m^2/m (chord)
     voltv = trapz(xtvvec,atv*ctvvec); %m^3, total tail volume
+    
+    %Calculate vertical tail structure - assume covered in .7 oz
+    %fiberglass
+    sa_vt = 2*s_vtail;
+    m_vt_glass = sa_vt*rho_g_t;
+    m_vt_glass = m_vt_glass + m_vt_glass/fiber_resin_ratio;
 
-    m_htail = volt * rho_f + bt * rho_boom; %kg, tail horizontal mass (assumes solid x section)
-    m_vtail = voltv * rho_f + btv* rho_boom; %kg, tail vertical mass (assumes solid x section)
+    m_htail = volt * rho_f + m_ht_glass; %kg, tail horizontal mass (assumes solid x section)
+    m_vtail = voltv * rho_f + m_vt_glass; %kg, tail vertical mass (assumes solid x section)
     
     %mass of electric components
     m_elec = .200;  
     
-    mass_empty = m_fuse + m_tailboom + m_wing + m_htail + m_vtail + m_elec;
+%     m_wing_foam = vol * rho_f
+%     m_fuse
+%     m_wing
+%     m_htail
+%     m_vtail
+    
+    mass_empty = m_fuse + m_wing + m_htail + m_vtail + m_elec;
+
 end
 
 function [sigma_max, deflection_span] = calc_beam(S_ref, weight, b)
 
     %Spar Dimensions
-    t_c = .12; %assume a thickness to chord for the wing
+    t_c = .08; %assume a thickness to chord for the wing
     c = S_ref/b; %wing chord - m
-    r_o = 0.75*t_c*c/2; %m - estimate a thickness for the spar. Assume its .75 of the chord
+    r_o = 0.5*t_c*c/2; %m - estimate a thickness for the spar. 
     r_i = r_o - 0.0015875; %m - assume a constant wall thickness of 1/16 inch - from Dragonplate's website
-
+    
+    if r_i < 0
+        r_i = 0; %make sure r_i isn't negative
+    end
+    
     %Spar properties
     E = 7200; %MPa taken from online carbon fiber spar
     I = pi*0.25* (r_o^4 - r_i^4); %m^4, derived from spar geometry
