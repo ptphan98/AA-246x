@@ -27,7 +27,7 @@ Weight_lo = 0; %Kg
 Span_lo = 0.1; %m
 V_cruise_lo = 0; %m/s
 
-Weight_up = 1.5; %Kg
+Weight_up = 2.3; %Kg
 Span_up = +Inf; %m
 V_cruise_up = +Inf; %m/s
 
@@ -323,7 +323,7 @@ function [sigma_max, deflection_span] = calc_beam(S_ref, weight, b)
     end
     
     %Spar properties
-    E = 7200; %MPa taken from online carbon fiber spar
+    E = 70*10^9; %MPa taken from online carbon fiber spar
     I = pi*0.25* (r_o^4 - r_i^4); %m^4, derived from spar geometry
     J = pi*0.25* (r_o^4 - r_i^4); %m^4, derived from spar geometry
     ymax = r_o; %maximum spar distance from neutral axis
@@ -331,21 +331,21 @@ function [sigma_max, deflection_span] = calc_beam(S_ref, weight, b)
     %xlim([0 b/2]);
     %ylim([0 cr]);
     
-    c = S_ref./b;
-    g_load = 1.5; %how much load do we expect?
+    g_load = 1; %how much load do we expect?
     xvec = linspace(0,b/2,10000); %m, x positions along wing starting from root to b/2
     %wvec = cvec * L_S; %N/m, rectangular lift distribution, do not use
-    w0 = 4*weight*g_load/(pi*b);
+    w0 = (4*weight*g_load*cst.g)/(pi*b);
     wvec = w0 * sqrt(1 - (xvec/(0.5*b)).^2);%N/m, elliptical lift distribution
-
-    Vvec = cumtrapz(xvec,wvec); %N
-    Vvec = flip(Vvec);
-
+    wvec_flip = flip(wvec);
+    
+    Vvec = cumtrapz(xvec,wvec_flip); %N
     Mvec = cumtrapz(xvec,Vvec); %Nm
+    
+    Vvec = flip(Vvec);
     Mvec = flip(Mvec);
-
+    
     u_primevec = cumtrapz(xvec,Mvec);
-    uvec = E*I*cumtrapz(xvec,u_primevec); %m
+    uvec = cumtrapz(xvec,u_primevec)/(E*I); %m
     umax = max(uvec);
     
     deflection_span = umax/b; %deflection to span ratio
