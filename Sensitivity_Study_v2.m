@@ -14,66 +14,53 @@ cst.g = 9.807; %m/s^2
 cst.CL_max = 1.2;
 cst.V_stall = 7; %m/s
 cst.W_L = 1/2 * cst.rho * cst.V_stall^2 * cst.CL_max / cst.g; % wing loading is sized by stall speed
-cst.spar_ratio = .5; %percent spar of max airfoil thickness
 [~,cst.xin,cst.yin]=openfile('naca0008.dat'); %WING AIRFOIL, EDIT
 [~,cst.xtin,cst.ytin]=openfile('naca0008.dat'); %TAIL AIRFOIL, EDIT
 
-weights = 1:.5:20;
-results = zeros(length(weights),3);
+%walrus
+%mass_empty = empty_weight(0.19734, .715*2);
+%plot_aircraft(0.19734, .715*2);
 
-%calc at 8 percent thickness
-for i = 1:length(weights)
-    % Lower and upper bounds
-    Weight_lo = 0; %Kg
-    Span_lo = .1; %m
-    V_cruise_lo = 0; %m/s
+% Lower and upper bounds
+Weight_lo = 0; %Kg
+Span_lo = 0.1; %m
+V_cruise_lo = 0; %m/s
 
-    Weight_up = weights(i); %Kg
-    Span_up = +Inf; %m
-    V_cruise_up = +Inf; %m/s
+Weight_up = 2; %Kg
+Span_up = +Inf; %m
+V_cruise_up = +Inf; %m/s
 
-    x_0 = [weights(i),2,25];
-    A = [];
-    b = [];
-    Aeq = [];
-    beq = [];
-    lb = [Weight_lo,Span_lo,V_cruise_lo];
-    ub = [Weight_up,Span_up,V_cruise_up];
+x_0 = [2,2,15];
+A = [];
+b = [];
+Aeq = [];
+beq = [];
+lb = [Weight_lo,Span_lo,V_cruise_lo];
+ub = [Weight_up,Span_up,V_cruise_up];
 
-    options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
-    results(i,:) = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options );
-end
-plot(weights,results(:,3))
-title('Weight Sensitivity Study')
-xlabel('Weight (kg)')
-ylabel('Speed (m/s)')
-hold on 
+options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
+%options = optimoptions('fmincon','MaxFunctionEvaluation', 10000);
+x = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options);
 
-[~,cst.xin,cst.yin]=openfile('naca0010.dat'); %WING AIRFOIL, EDIT
-for i = 1:length(weights)
-    % Lower and upper bounds
-    Weight_lo = 0; %Kg
-    Span_lo = .1; %m
-    V_cruise_lo = 0; %m/s
+%show optimized aircraft 
+weight = x(1);
+b = x(2);
+v_cruise = x(3);
+AR = b^2/(weight/cst.W_L);
+S_ref = weight / cst.W_L;
 
-    Weight_up = weights(i); %Kg
-    Span_up = +Inf; %m
-    V_cruise_up = +Inf; %m/s
+[CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_cruise);
+[sigma_max, deflection_span] = calc_beam(S_ref, weight, b);
+mass_empty = empty_weight(S_ref, b);
+[mass_bat] = battery_weight(weight, L_D);
+[mass_motor,T_W,Power_max] = motor_weight(weight, Drag, v_cruise);
+mass_total = mass_bat + mass_motor + mass_empty;
 
-    x_0 = [weights(i),2,25];
-    A = [];
-    b = [];
-    Aeq = [];
-    beq = [];
-    lb = [Weight_lo,Span_lo,V_cruise_lo];
-    ub = [Weight_up,Span_up,V_cruise_up];
+battery_frac = mass_bat/mass_total
+motor_frac = mass_motor/mass_total
+structural_frac = mass_empty/mass_total
 
-    options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
-    results(i,:) = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options );
-end
-plot(weights,results(:,3))
-legend('8 Percent T/C','10 Percent T/C')
-improvePlot
+plot_aircraft(S_ref, b)
 
 %% plot aircraft 
 function [] = plot_aircraft(S_ref, b)
@@ -247,7 +234,7 @@ function [mass_empty] = empty_weight(S_ref, b)
     
     %Calculate Wing Spar Volume
     t_c = .08; %assume a thickness to chord for the wing
-    r_o = cst.spar_ratio*t_c*c/2; %m - estimate a thickness for the spar. 
+    r_o = 0.5*t_c*c/2; %m - estimate a thickness for the spar. 
     r_i = r_o - 0.0015875; %m - assume a constant wall thickness of 1/16 inch - from Dragonplate's website
     if r_i < 0
         r_i = 0; %make sure r_i isn't negative
@@ -322,12 +309,11 @@ function [mass_empty] = empty_weight(S_ref, b)
 end
 
 function [sigma_max, deflection_span] = calc_beam(S_ref, weight, b)
-    global cst
-    
+
     %Spar Dimensions
     t_c = .08; %assume a thickness to chord for the wing
     c = S_ref/b; %wing chord - m
-    r_o = cst.spar_ratio*t_c*c/2; %m - estimate a thickness for the spar. 
+    r_o = 0.5*t_c*c/2; %m - estimate a thickness for the spar. 
     r_i = r_o - 0.0015875; %m - assume a constant wall thickness of 1/16 inch - from Dragonplate's website
     
     if r_i < 0

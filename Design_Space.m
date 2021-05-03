@@ -14,6 +14,7 @@ cst.g = 9.807; %m/s^2
 cst.CL_max = 1.2;
 cst.V_stall = 7; %m/s
 cst.W_L = 1/2 * cst.rho * cst.V_stall^2 * cst.CL_max / cst.g; % wing loading is sized by stall speed
+cst.spar_ratio = .5; %percent spar of max airfoil thickness
 [~,cst.xin,cst.yin]=openfile('naca0008.dat'); %WING AIRFOIL, EDIT
 [~,cst.xtin,cst.ytin]=openfile('naca0008.dat'); %TAIL AIRFOIL, EDIT
 
@@ -26,11 +27,11 @@ Weight_lo = 0; %Kg
 Span_lo = 0.1; %m
 V_cruise_lo = 0; %m/s
 
-Weight_up = 2; %Kg
+Weight_up = 1.5; %Kg
 Span_up = +Inf; %m
 V_cruise_up = +Inf; %m/s
 
-x_0 = [2,2,15];
+x_0 = [Weight_up,2,24];
 A = [];
 b = [];
 Aeq = [];
@@ -234,7 +235,7 @@ function [mass_empty] = empty_weight(S_ref, b)
     
     %Calculate Wing Spar Volume
     t_c = .08; %assume a thickness to chord for the wing
-    r_o = 0.5*t_c*c/2; %m - estimate a thickness for the spar. 
+    r_o = cst.spar_ratio*t_c*c/2; %m - estimate a thickness for the spar. 
     r_i = r_o - 0.0015875; %m - assume a constant wall thickness of 1/16 inch - from Dragonplate's website
     if r_i < 0
         r_i = 0; %make sure r_i isn't negative
@@ -309,11 +310,12 @@ function [mass_empty] = empty_weight(S_ref, b)
 end
 
 function [sigma_max, deflection_span] = calc_beam(S_ref, weight, b)
-
+    global cst
+    
     %Spar Dimensions
     t_c = .08; %assume a thickness to chord for the wing
     c = S_ref/b; %wing chord - m
-    r_o = 0.5*t_c*c/2; %m - estimate a thickness for the spar. 
+    r_o = cst.spar_ratio*t_c*c/2; %m - estimate a thickness for the spar. 
     r_i = r_o - 0.0015875; %m - assume a constant wall thickness of 1/16 inch - from Dragonplate's website
     
     if r_i < 0
