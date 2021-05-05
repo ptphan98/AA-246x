@@ -1,3 +1,7 @@
+% Bulk of this code was written by Philip with input from Jean and Karthik 
+% Three functions (empty_weight, calc_beam, and openfile) were written by Yamaan
+% with modifications by Philip to get integrated into the code.
+
 clc;
 close all;
 clear all;
@@ -63,7 +67,7 @@ structural_frac = mass_empty/mass_total
 
 plot_aircraft(S_ref, b, l_boom)
 
-%% plot aircraft 
+%% plot aircraft - written by Philip
 function [] = plot_aircraft(S_ref, b, l_boom)
     global cst
     [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
@@ -86,13 +90,13 @@ function [] = plot_aircraft(S_ref, b, l_boom)
     axis equal
 end
 
-%% optimizing functions
+%% optimizing functions - written by Philip
 
 function score = optimize(weight, b, v_air, l_boom)    
     score = -v_air; %maximize velocity and minimize weight
 end
 
-% nonlinear constraints
+% nonlinear constraints - written by Philip
 function [c, ceq] = nonl_const(weight, b, v_air,l_boom)
     global cst
     S_ref = weight / cst.W_L; 
@@ -119,6 +123,7 @@ end
 
 %% aircraft sizing functions
 
+% Written by Philip
 function [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom)
 %gives conventional tail dimensions based on wing geometry
 %guess some typical values for tail parameters
@@ -137,6 +142,7 @@ s_vtail = vt_vol_cf.*S_ref.*b./l_t;
 c_vtail = sqrt(s_vtail./AR_vt);
 end 
 
+% Written by Philip
 function [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_air,l_boom)
 global cst
 S_ref = weight / cst.W_L;
@@ -173,10 +179,11 @@ Drag = 1/2 * cst.rho * v_air^2 * S_ref * Cd; %Newtons
         %flat plate assumption for Cf
         nu = 15.52e-6; %m^2/s
         Re = v_air.*l./nu;
-        CF = 0.455./(log10(Re).^2.58); %assume airflow always laminar
+        CF = 0.455./(log10(Re).^2.58); %assume airflow always turbulent
     end
 end
 
+% Written by Philip
 function [mass_bat] = battery_weight(weight, L_D)
     global cst
     eta_sys = .374; %battery + propellor + motor effiency estimate
@@ -185,6 +192,7 @@ function [mass_bat] = battery_weight(weight, L_D)
     mass_bat = range.*cst.g.*weight./(L_D.*eta_sys.*H_batt);
 end
 
+% Written by Philip
 function [mass_motor,T_W,Power_max] = motor_weight(weight, Thrust, v_air)
     Power_cruise = Thrust * v_air; %watts
     
@@ -197,6 +205,7 @@ function [mass_motor,T_W,Power_max] = motor_weight(weight, Thrust, v_air)
     mass_motor =  1./motor_p_density.*Power_max *2; % times 2 for prop efficiency
 end
 
+% Written by Yamaan, modified by Philip
 function [mass_empty] = empty_weight(S_ref, b, l_boom)
     global cst
     [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
@@ -309,6 +318,7 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
 
 end
 
+% Written by Yamaan, modified by Philip
 function [sigma_max, deflection_span] = calc_beam(S_ref, weight, b)
     global cst
     
@@ -383,6 +393,7 @@ function [sigma_max, deflection_span] = calc_beam(S_ref, weight, b)
     end
 end
 
+% Written by Yamaan
 function [n,xin,yin] = openfile(file)
     % Read airfoil profile and place in xin, yin vectors
     fid = fopen(file);
