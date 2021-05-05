@@ -15,44 +15,44 @@ cst.CL_max = 1.2;
 cst.V_stall = 7; %m/s
 cst.W_L = 1/2 * cst.rho * cst.V_stall^2 * cst.CL_max / cst.g; % wing loading is sized by stall speed
 cst.spar_ratio = .5; %percent spar of max airfoil thickness
-cst.r_fus = 0.05; %approximately the size to fit a .5-.7kg lipo - outer dimensions
 [~,cst.xin,cst.yin]=openfile('naca0008.dat'); %WING AIRFOIL, EDIT
 [~,cst.xtin,cst.ytin]=openfile('naca0008.dat'); %TAIL AIRFOIL, EDIT
 
+%walrus
+%mass_empty = empty_weight(0.19734, .715*2);
+%plot_aircraft(0.19734, .715*2);
+
 % Lower and upper bounds
 Weight_lo = 0; %Kg
-Span_lo = 0.1; %m
+Span_lo = .1; %m
 V_cruise_lo = 0; %m/s
-L_boom_lo = 0; %NOTE: l_boom is quarter chord of wing to quarter chord tail
 
-Weight_up = 2.26; %Kg
+Weight_up = 2.26796; %Kg - 5 lb constraint
 Span_up = +Inf; %m
 V_cruise_up = +Inf; %m/s
-L_boom_up = +Inf;
 
-x_0 = [Weight_up,1.5,20,.75];
+x_0 = [Weight_up,2,24];
 A = [];
 b = [];
 Aeq = [];
 beq = [];
-lb = [Weight_lo,Span_lo,V_cruise_lo,L_boom_lo];
-ub = [Weight_up,Span_up,V_cruise_up,L_boom_up];
+lb = [Weight_lo,Span_lo,V_cruise_lo];
+ub = [Weight_up,Span_up,V_cruise_up];
 
 options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
 %options = optimoptions('fmincon','MaxFunctionEvaluation', 10000);
-x = fmincon( @(x) optimize( x(1),x(2),x(3),x(4)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3),x(4)),options);
+x = fmincon( @(x) optimize( x(1),x(2),x(3)), x_0,A,b,Aeq,beq,lb,ub, @(x) nonl_const( x(1),x(2),x(3)),options);
 
 %show optimized aircraft 
 weight = x(1);
 b = x(2);
 v_cruise = x(3);
-l_boom = x(4);
 AR = b^2/(weight/cst.W_L);
 S_ref = weight / cst.W_L;
 
-[CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_cruise, l_boom);
+[CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_cruise);
 [sigma_max, deflection_span] = calc_beam(S_ref, weight, b);
-mass_empty = empty_weight(S_ref, b, l_boom);
+mass_empty = empty_weight(S_ref, b);
 [mass_bat] = battery_weight(weight, L_D);
 [mass_motor,T_W,Power_max] = motor_weight(weight, Drag, v_cruise);
 mass_total = mass_bat + mass_motor + mass_empty;
@@ -61,16 +61,15 @@ battery_frac = mass_bat/mass_total
 motor_frac = mass_motor/mass_total
 structural_frac = mass_empty/mass_total
 
-plot_aircraft(S_ref, b, l_boom)
+plot_aircraft(S_ref, b)
 
 %% plot aircraft 
-function [] = plot_aircraft(S_ref, b, l_boom)
-    global cst
-    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
+function [] = plot_aircraft(S_ref, b)
+    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b)
     
     %estimate fuselage area
-    l_fus = l_boom/0.75; %ballpark for fuselage length. RC airplanes typically 75% of span
-    r_fus = cst.r_fus; 
+    l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
+    r_fus = l_fus./8./2; %assume fuselage fineness ratio of 8
 
     %we model the fuselage as cone nose and cylinder fuselage
     tail_end = l_t+.75*c_htail;
@@ -88,16 +87,16 @@ end
 
 %% optimizing functions
 
-function score = optimize(weight, b, v_air, l_boom)    
+function score = optimize(weight, b, v_air)    
     score = -v_air; %maximize velocity and minimize weight
 end
 
 % nonlinear constraints
-function [c, ceq] = nonl_const(weight, b, v_air,l_boom)
+function [c, ceq] = nonl_const(weight, b, v_air)
     global cst
     S_ref = weight / cst.W_L; 
-    mass_empty = empty_weight(S_ref, b, l_boom);
-    [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_air, l_boom);
+    mass_empty = empty_weight(S_ref, b);
+    [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_air);
     [sigma_max, deflection_span] = calc_beam(S_ref, weight, b);
     [mass_bat] = battery_weight(weight, L_D);
     [mass_motor,T_W,Power_max] = motor_weight(weight, Drag, v_air);
@@ -119,7 +118,7 @@ end
 
 %% aircraft sizing functions
 
-function [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom)
+function [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b)
 %gives conventional tail dimensions based on wing geometry
 %guess some typical values for tail parameters
 static_margin = 0.05;
@@ -129,7 +128,8 @@ AR_ht = 4;
 AR_vt = 1.5; 
 
 c = S_ref./b; %mean chord estimate
-l_t = l_boom; %ballpark for length of 1/4 chord to 1/4 tail chord. Should be optimized for weight!
+l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
+l_t = 0.75.*l_fus; %ballpark for length of 1/4 chord to 1/4 tail chord. Should be optimized for weight!
 
 s_htail = ht_vol_cf.*S_ref.*c./l_t;
 c_htail = sqrt(s_htail./AR_ht);
@@ -137,10 +137,10 @@ s_vtail = vt_vol_cf.*S_ref.*b./l_t;
 c_vtail = sqrt(s_vtail./AR_vt);
 end 
 
-function [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_air,l_boom)
+function [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_air)
 global cst
 S_ref = weight / cst.W_L;
-[c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
+[c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b);
 
 AR = b.^2./S_ref;
 CL = 9.81.* cst.W_L./(0.5.*cst.rho.*v_air.^2);
@@ -149,8 +149,8 @@ K = 1./(pi.*AR.*e);
 Cdi = CL.^2./(pi.*AR.*e); %lift induced drag
 
 %estimate fuselage area
-l_fus = l_boom/.75; %ballpark for fuselage length.
-r_fus = cst.r_fus; %assume fuselage fineness ratio of 8
+l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
+r_fus = l_fus./8./2; %assume fuselage fineness ratio of 8
 
 %we model the fuselage as cone nose and cylinder fuselage
 %assume nose is 1/5 length of entire fuselage
@@ -167,7 +167,7 @@ L_D = CL/Cd;
 %configuration
 Cl_opt = sqrt(Cd0/K);
 v_ideal = sqrt( (2*9.81*weight)/(cst.rho*Cl_opt*S_ref) );
-Drag = 1/2 * cst.rho * v_air^2 * S_ref * Cd; %Newtons
+Drag = 1/2 * cst.rho * v_air^2 * S_ref * Cd;
 
     function CF = calc_Cf(l,v_air)
         %flat plate assumption for Cf
@@ -197,9 +197,9 @@ function [mass_motor,T_W,Power_max] = motor_weight(weight, Thrust, v_air)
     mass_motor =  1./motor_p_density.*Power_max *2; % times 2 for prop efficiency
 end
 
-function [mass_empty] = empty_weight(S_ref, b, l_boom)
+function [mass_empty] = empty_weight(S_ref, b)
     global cst
-    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
+    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b);
     
     %%%% Material Properties
     rho_cf = 2000; %kg/m^3, density of carbon fiber 
@@ -215,8 +215,8 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     %To account for fuselage structure, assume fuselage covered in 1.4 oz
     %fiberglass
     
-    l_fus = l_boom/.75; %ballpark for fuselage length.
-    r_fus = cst.r_fus; %assume fuselage fineness ratio of 8
+    l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
+    r_fus = l_fus./8./2; %assume fuselage fineness ratio of 8
     wall_thick = 0.005; %assume fuselage wall thickness is .5 cm of foam
     vol_fuse = ((pi.*r_fus^2)-(pi.*(r_fus-wall_thick)^2))*l_fus; 
     sa_fuse = (2*pi*r_fus)*l_fus;
