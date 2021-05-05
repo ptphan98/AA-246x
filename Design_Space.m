@@ -24,7 +24,7 @@ cst.spar_ratio = .5; %percent spar of max airfoil thickness
 
 % Lower and upper bounds
 Weight_lo = 0; %Kg
-Span_lo = 0.1; %m
+Span_lo = .1; %m
 V_cruise_lo = 0; %m/s
 
 Weight_up = 2.26796; %Kg - 5 lb constraint
@@ -65,7 +65,7 @@ plot_aircraft(S_ref, b)
 
 %% plot aircraft 
 function [] = plot_aircraft(S_ref, b)
-    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b);
+    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b)
     
     %estimate fuselage area
     l_fus = 0.75.*b; %ballpark for fuselage length. RC airplanes typically 75% of span
