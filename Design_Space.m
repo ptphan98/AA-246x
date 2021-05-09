@@ -29,8 +29,8 @@ Span_lo = 0.1; %m
 V_cruise_lo = 0; %m/s
 L_boom_lo = 0; %NOTE: l_boom is quarter chord of wing to quarter chord tail
 
-Weight_up = 2.26; %Kg
-Span_up = +Inf; %m
+Weight_up = 2.04117; %Kg
+Span_up = 1.5; %m
 V_cruise_up = +Inf; %m/s
 L_boom_up = +Inf;
 
@@ -53,6 +53,8 @@ v_cruise = x(3);
 l_boom = x(4);
 AR = b^2/(weight/cst.W_L);
 S_ref = weight / cst.W_L;
+chord = S_ref/b;
+time = 21100/v_cruise/60
 
 [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_cruise, l_boom);
 [sigma_max, deflection_span] = calc_beam(S_ref, weight, b);
@@ -70,7 +72,10 @@ plot_aircraft(S_ref, b, l_boom)
 %% plot aircraft - written by Philip
 function [] = plot_aircraft(S_ref, b, l_boom)
     global cst
-    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
+    S_ref
+    b
+    l_boom
+    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom)
     
     %estimate fuselage area
     l_fus = l_boom/0.75; %ballpark for fuselage length. RC airplanes typically 75% of span
@@ -187,7 +192,8 @@ end
 function [mass_bat] = battery_weight(weight, L_D)
     global cst
     eta_sys = .374; %battery + propellor + motor effiency estimate
-    range = 42195/2; %meters
+    safety_factor = 1.1;
+    range = 42195/2*safety_factor; %meters
     H_batt = 155*3600; %specific energy density (Joules/kg)
     mass_bat = range.*cst.g.*weight./(L_D.*eta_sys.*H_batt);
 end
@@ -224,15 +230,19 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     %To account for fuselage structure, assume fuselage covered in 1.4 oz
     %fiberglass
     
+    rho_g10 = 1800; %kg/m^3
+    n = 4; %number bulkheads;
+    m_bulkheads = n*(pi*cst.r_fus^2)*0.0015875* rho_g10;
+    
     l_fus = l_boom/.75; %ballpark for fuselage length.
     r_fus = cst.r_fus; %assume fuselage fineness ratio of 8
-    wall_thick = 0.005; %assume fuselage wall thickness is .5 cm of foam
+    wall_thick = 0.01; %assume fuselage wall thickness is .5 cm of foam
     vol_fuse = ((pi.*r_fus^2)-(pi.*(r_fus-wall_thick)^2))*l_fus; 
     sa_fuse = (2*pi*r_fus)*l_fus;
     
     m_fuse_glass = sa_fuse* rho_g_f;
     m_fuse_glass = m_fuse_glass + m_fuse_glass/fiber_resin_ratio; %account for expoxy weight
-    m_fuse =  vol_fuse*rho_f + m_fuse_glass;
+    m_fuse =  vol_fuse*rho_f + m_fuse_glass + m_bulkheads;
     
     %%%% WING CALCS, CURRENTLY ASSUMING RECTANGULAR SECTIONS. IF TAPERED
     %%%% DESIRED, JUST ADD MORE INPUTS TO FUNCTION AND EDIT
@@ -306,15 +316,19 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     m_vtail = voltv * rho_f + m_vt_glass; %kg, tail vertical mass (assumes solid x section)
     
     %mass of electric components
-    m_elec = .200;  
+    m_elec = .380;  
     
 %     m_wing_foam = vol * rho_f
 %     m_fuse
 %     m_wing
 %     m_htail
 %     m_vtail
-    
-    mass_empty = m_fuse + m_wing + m_htail + m_vtail + m_elec;
+    m_bulkheads
+    m_fuse 
+    m_wing
+    m_htail
+    m_vtail
+    mass_empty = m_fuse + m_wing + m_htail + m_vtail + m_elec
 
 end
 
