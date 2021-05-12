@@ -18,8 +18,9 @@ cst.g = 9.807; %m/s^2
 cst.CL_max = 1.2;
 cst.V_stall = 7; %m/s
 cst.W_L = 1/2 * cst.rho * cst.V_stall^2 * cst.CL_max / cst.g; % wing loading is sized by stall speed
-cst.spar_ratio = .5; %percent spar of max airfoil thickness
-cst.r_fus = 0.05; %approximately the size to fit a .5-.7kg lipo - outer dimensions
+cst.spar_ratio = .7; %percent spar of max airfoil thickness
+cst.l_fus = 0.50; %from the CAD
+cst.r_fus = 0.040; %fits our lipo comfortably
 [~,cst.xin,cst.yin]=openfile('naca0008.dat'); %WING AIRFOIL, EDIT
 [~,cst.xtin,cst.ytin]=openfile('naca0008.dat'); %TAIL AIRFOIL, EDIT
 
@@ -34,7 +35,7 @@ Span_up = 1.5; %m
 V_cruise_up = +Inf; %m/s
 L_boom_up = +Inf;
 
-x_0 = [Weight_up,1.5,20,.75];
+x_0 = [1,1.5,30,.75];
 A = [];
 b = [];
 Aeq = [];
@@ -62,36 +63,54 @@ mass_empty = empty_weight(S_ref, b, l_boom);
 [mass_bat] = battery_weight(weight, L_D);
 [mass_motor,T_W,Power_max] = motor_weight(weight, Drag, v_cruise);
 mass_total = mass_bat + mass_motor + mass_empty;
+[c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
+b_htail = s_htail/c_htail;
+b_vtail = s_vtail/c_vtail;
+
+%output useful info
+
+b
+chord
+S_ref
+b_htail
+c_htail
+s_htail
+b_vtail
+c_vtail
+s_vtail
+l_t
 
 battery_frac = mass_bat/mass_total
 motor_frac = mass_motor/mass_total
-structural_frac = mass_empty/mass_total
+emptyweight_frac = mass_empty/mass_total
 
 plot_aircraft(S_ref, b, l_boom)
 
 %% plot aircraft - written by Philip
 function [] = plot_aircraft(S_ref, b, l_boom)
     global cst
-    S_ref
-    b
-    l_boom
-    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom)
+    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
     
     %estimate fuselage area
-    l_fus = l_boom/0.75; %ballpark for fuselage length. RC airplanes typically 75% of span
+    l_fus = cst.l_fus; 
     r_fus = cst.r_fus; 
-
+    r_boom = 0.010;
+    
     %we model the fuselage as cone nose and cylinder fuselage
     tail_end = l_t+.75*c_htail;
     
-    pgon = polyshape([tail_end tail_end tail_end-l_fus  tail_end-l_fus],[-r_fus r_fus r_fus -r_fus]);
+    pgon = polyshape([tail_end tail_end tail_end-l_boom  tail_end-l_boom],[-r_boom r_boom r_boom -r_boom]);
+    pgon2 = polyshape([tail_end-l_boom+c*.75 tail_end-l_boom+c*.75 tail_end-l_boom-l_fus+c*.75  tail_end-l_boom-l_fus+c*.75],[-r_fus r_fus r_fus -r_fus]);
     
     figure;
     hold on
     rectangle('Position',[(c/4 + l_t-.25*c_htail) (0-(s_htail/c_htail)/2) c_htail s_htail/c_htail],'EdgeColor','r','LineWidth',3); %horizontal tail
     rectangle('Position',[ (c/4 + l_t-.25*c_vtail) 0 c_vtail s_vtail/c_vtail],'EdgeColor','b','LineWidth',3); %vertical tail
     rectangle('Position',[0 0-b/2 c b],'EdgeColor','k','LineWidth',3); %wing
-    plot(pgon)
+    pg = plot(pgon);
+    pg.FaceColor = 'k';
+    pg2 = plot(pgon2);
+    
     axis equal
 end
 
@@ -122,7 +141,7 @@ function [c, ceq] = nonl_const(weight, b, v_air,l_boom)
     AR_upper = 20;
 
     %c = [- AR + AR_lower, AR - AR_upper, sigma_max - max_stress,deflection_span-max_deflection_span];
-    c = [sigma_max - max_stress,deflection_span-max_deflection_span,mass_total - weight];
+    c = [sigma_max - max_stress,deflection_span-max_deflection_span,mass_total - weight, mass_bat-0.218];
     ceq = [];
 end
 
@@ -160,8 +179,8 @@ K = 1./(pi.*AR.*e);
 Cdi = CL.^2./(pi.*AR.*e); %lift induced drag
 
 %estimate fuselage area
-l_fus = l_boom/.75; %ballpark for fuselage length.
-r_fus = cst.r_fus; %assume fuselage fineness ratio of 8
+l_fus = cst.l_fus; %measured on CAD
+r_fus = cst.r_fus; 
 
 %we model the fuselage as cone nose and cylinder fuselage
 %assume nose is 1/5 length of entire fuselage
@@ -218,6 +237,7 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     
     %%%% Material Properties
     rho_cf = 2000; %kg/m^3, density of carbon fiber 
+    rho_boom = .170; %kg/m - linear density of tailboom
     rho_g_f = 0.047468; %kg/m^2 - 1.4 oz/yd^2 fiberglass - fuselage
     rho_g_t = 0.023734; %kg/m^2 - .7 oz/yd^2 fiberglass - tails
     fiber_resin_ratio = 1; %assume fiber and resin weight equal
@@ -226,6 +246,8 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     rho_f = rho_f* 1.00115; %oz/cu-ft to kg/m^3
     
     %%%% CALCULATE FUSELAGE WEIGHT - Currently assumes a cylinder fuselage
+    %%%% - Update 5/12/2021: Fuselage weight is now estimated using CAD. This section isn't used.    
+    
     %assume fuselage wall thickness is 1 cm of foam
     %To account for fuselage structure, assume fuselage covered in 1.4 oz
     %fiberglass
@@ -243,6 +265,10 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     m_fuse_glass = sa_fuse* rho_g_f;
     m_fuse_glass = m_fuse_glass + m_fuse_glass/fiber_resin_ratio; %account for expoxy weight
     m_fuse =  vol_fuse*rho_f + m_fuse_glass + m_bulkheads;
+    
+    %%%% Calculate tailboom weight
+    
+    m_boom = l_boom*rho_boom;
     
     %%%% WING CALCS, CURRENTLY ASSUMING RECTANGULAR SECTIONS. IF TAPERED
     %%%% DESIRED, JUST ADD MORE INPUTS TO FUNCTION AND EDIT
@@ -315,20 +341,10 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     m_htail = volt * rho_f + m_ht_glass; %kg, tail horizontal mass (assumes solid x section)
     m_vtail = voltv * rho_f + m_vt_glass; %kg, tail vertical mass (assumes solid x section)
     
-    %mass of electric components
-    m_elec = .380;  
-    
-%     m_wing_foam = vol * rho_f
-%     m_fuse
-%     m_wing
-%     m_htail
-%     m_vtail
-    m_bulkheads
-    m_fuse 
-    m_wing
-    m_htail
-    m_vtail
-    mass_empty = m_fuse + m_wing + m_htail + m_vtail + m_elec
+    %mass of fuselage + electronics
+    m_fixed = 0.430;  %fuselage weight estimated from CAD
+
+    mass_empty = m_boom + m_wing + m_htail + m_vtail + m_fixed;
 
 end
 
