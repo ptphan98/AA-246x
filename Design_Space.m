@@ -19,29 +19,29 @@ cst.CL_max = 1.2;
 cst.V_stall = 7; %m/s
 cst.W_L = 1/2 * cst.rho * cst.V_stall^2 * cst.CL_max / cst.g; % wing loading is sized by stall speed
 cst.spar_ratio = .7; %percent spar of max airfoil thickness
-cst.l_fus = 0.50; %from the CAD
+cst.l_fus = 0.46; %from the CAD
 cst.r_fus = 0.040; %fits our lipo comfortably
-[~,cst.xin,cst.yin]=openfile('naca0008.dat'); %WING AIRFOIL, EDIT
+[~,cst.xin,cst.yin]=openfile('ag0308.dat'); %WING AIRFOIL, EDIT
 [~,cst.xtin,cst.ytin]=openfile('naca0008.dat'); %TAIL AIRFOIL, EDIT
 
 % Lower and upper bounds
 Weight_lo = 0; %Kg
 Span_lo = 0.1; %m
 V_cruise_lo = 0; %m/s
-L_boom_lo = 0; %NOTE: l_boom is quarter chord of wing to quarter chord tail
+l_t_lo = 0; %NOTE: l_t is quarter chord of wing to quarter chord tail
 
 Weight_up = 2.04117; %Kg
 Span_up = 1.5; %m
 V_cruise_up = +Inf; %m/s
-L_boom_up = +Inf;
+l_t_up = +Inf; %m
 
 x_0 = [1,1.5,30,.75];
 A = [];
 b = [];
 Aeq = [];
 beq = [];
-lb = [Weight_lo,Span_lo,V_cruise_lo,L_boom_lo];
-ub = [Weight_up,Span_up,V_cruise_up,L_boom_up];
+lb = [Weight_lo,Span_lo,V_cruise_lo,l_t_lo];
+ub = [Weight_up,Span_up,V_cruise_up,l_t_up];
 
 options = optimoptions('fmincon','Algorithm','sqp', 'MaxFunctionEvaluation', 10000);
 %options = optimoptions('fmincon','MaxFunctionEvaluation', 10000);
@@ -51,19 +51,20 @@ x = fmincon( @(x) optimize( x(1),x(2),x(3),x(4)), x_0,A,b,Aeq,beq,lb,ub, @(x) no
 weight = x(1);
 b = x(2);
 v_cruise = x(3);
-l_boom = x(4);
+l_t = x(4);
 AR = b^2/(weight/cst.W_L);
 S_ref = weight / cst.W_L;
 chord = S_ref/b;
 time = 21100/v_cruise/60
 
-[CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_cruise, l_boom);
+[CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_cruise, l_t);
 [sigma_max, deflection_span] = calc_beam(S_ref, weight, b);
-mass_empty = empty_weight(S_ref, b, l_boom);
+[mass_empty, m_fixed, m_wing, m_htail, m_vtail, m_boom] = empty_weight(S_ref, b, l_t);
 [mass_bat] = battery_weight(weight, L_D);
 [mass_motor,T_W,Power_max] = motor_weight(weight, Drag, v_cruise);
 mass_total = mass_bat + mass_motor + mass_empty;
-[c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
+[c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_t);
+CG = calc_CG(S_ref, b, l_t, m_fixed, m_wing, m_htail, m_vtail, m_boom, mass_motor, mass_bat);
 b_htail = s_htail/c_htail;
 b_vtail = s_vtail/c_vtail;
 
@@ -79,57 +80,75 @@ b_vtail
 c_vtail
 s_vtail
 l_t
+l_boom = l_t - (c*.75) + .18*cst.l_fus
 
 battery_frac = mass_bat/mass_total
 motor_frac = mass_motor/mass_total
 emptyweight_frac = mass_empty/mass_total
 
-plot_aircraft(S_ref, b, l_boom)
+plot_aircraft(weight, S_ref, b, v_cruise, l_t)
 
 %% plot aircraft - written by Philip
-function [] = plot_aircraft(S_ref, b, l_boom)
+function [] = plot_aircraft(weight, S_ref, b, v_air, l_t)
     global cst
-    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
+    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_t);
     
+    %zero is defined as quarter chord
     %estimate fuselage area
     l_fus = cst.l_fus; 
     r_fus = cst.r_fus; 
-    r_boom = 0.010;
+    r_boom = 0.0127; %half an inch
+    l_boom = l_t - (c*.75) + .18*l_fus;
     
     %we model the fuselage as cone nose and cylinder fuselage
-    tail_end = l_t+.75*c_htail;
+    tail_quart = l_t;
     
-    pgon = polyshape([tail_end tail_end tail_end-l_boom  tail_end-l_boom],[-r_boom r_boom r_boom -r_boom]);
-    pgon2 = polyshape([tail_end-l_boom+c*.75 tail_end-l_boom+c*.75 tail_end-l_boom-l_fus+c*.75  tail_end-l_boom-l_fus+c*.75],[-r_fus r_fus r_fus -r_fus]);
+    %plots boom
+    pgon = polyshape([tail_quart tail_quart tail_quart-l_boom  tail_quart-l_boom],[-r_boom r_boom r_boom -r_boom]);
+    
+    %plots fuselage
+    pgon2 = polyshape([tail_quart-l_t+c*.75 tail_quart-l_t+c*.75 tail_quart-l_t-l_fus+c*.75  tail_quart-l_t-l_fus+c*.75],[-r_fus r_fus r_fus -r_fus]);
     
     figure;
     hold on
-    rectangle('Position',[(c/4 + l_t-.25*c_htail) (0-(s_htail/c_htail)/2) c_htail s_htail/c_htail],'EdgeColor','r','LineWidth',3); %horizontal tail
-    rectangle('Position',[ (c/4 + l_t-.25*c_vtail) 0 c_vtail s_vtail/c_vtail],'EdgeColor','b','LineWidth',3); %vertical tail
-    rectangle('Position',[0 0-b/2 c b],'EdgeColor','k','LineWidth',3); %wing
+    rectangle('Position',[(tail_quart-.25*c_htail) (0-(s_htail/c_htail)/2) c_htail s_htail/c_htail],'EdgeColor','r','LineWidth',3); %horizontal tail
+    rectangle('Position',[ (tail_quart-.25*c_vtail) 0 c_vtail s_vtail/c_vtail],'EdgeColor','b','LineWidth',3); %vertical tail
+    rectangle('Position',[-c/4 0-b/2 c b],'EdgeColor','k','LineWidth',3); %wing
     pg = plot(pgon);
     pg.FaceColor = 'k';
     pg2 = plot(pgon2);
     
+    %plot CG
+    [mass_empty, m_fixed, m_wing, m_htail, m_vtail, m_boom] = empty_weight(S_ref, b, l_t);
+    [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_air, l_t);
+    [mass_bat] = battery_weight(weight, L_D);
+    [mass_motor,T_W,Power_max] = motor_weight(weight, Drag, v_air);
+    [CG,x_check] = calc_CG(S_ref, b, l_t, m_fixed, m_wing, m_htail, m_vtail, m_boom, mass_motor, mass_bat);
+    
+    plot(CG,0,'*k')
+    %plot(x_check,zeros(1,length(x_check)),'*k')
     axis equal
 end
 
 %% optimizing functions - written by Philip
 
-function score = optimize(weight, b, v_air, l_boom)    
+function score = optimize(weight, b, v_air, l_t)    
     score = -v_air; %maximize velocity and minimize weight
 end
 
 % nonlinear constraints - written by Philip
-function [c, ceq] = nonl_const(weight, b, v_air,l_boom)
+function [c, ceq] = nonl_const(weight, b, v_air,l_t)
     global cst
     S_ref = weight / cst.W_L; 
-    mass_empty = empty_weight(S_ref, b, l_boom);
-    [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_air, l_boom);
+    c = S_ref/b;
+    [mass_empty, m_fixed, m_wing, m_htail, m_vtail, m_boom] = empty_weight(S_ref, b, l_t);
+    [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_air, l_t);
     [sigma_max, deflection_span] = calc_beam(S_ref, weight, b);
     [mass_bat] = battery_weight(weight, L_D);
     [mass_motor,T_W,Power_max] = motor_weight(weight, Drag, v_air);
+    CG = calc_CG(S_ref, b, l_t, m_fixed, m_wing, m_htail, m_vtail, m_boom, mass_motor, mass_bat);
     mass_total = mass_bat + mass_motor + mass_empty;
+    l_boom = l_t - (c*.75) + .18*cst.l_fus; 
     
     %Wing Structure Constraints
     max_stress = 1.8*10^9; %failure stress of Carbon fiber
@@ -141,14 +160,14 @@ function [c, ceq] = nonl_const(weight, b, v_air,l_boom)
     AR_upper = 20;
 
     %c = [- AR + AR_lower, AR - AR_upper, sigma_max - max_stress,deflection_span-max_deflection_span];
-    c = [sigma_max - max_stress,deflection_span-max_deflection_span,mass_total - weight, mass_bat-0.218];
+    c = [sigma_max - max_stress,deflection_span-max_deflection_span,mass_total - weight, mass_bat-0.218, l_boom-0.9144];
     ceq = [];
 end
 
 %% aircraft sizing functions
 
 % Written by Philip
-function [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom)
+function [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_t)
 %gives conventional tail dimensions based on wing geometry
 %guess some typical values for tail parameters
 static_margin = 0.05;
@@ -158,7 +177,7 @@ AR_ht = 4;
 AR_vt = 1.5; 
 
 c = S_ref./b; %mean chord estimate
-l_t = l_boom; %ballpark for length of 1/4 chord to 1/4 tail chord. Should be optimized for weight!
+l_t = l_t; %ballpark for length of 1/4 chord to 1/4 tail chord. Should be optimized for weight!
 
 s_htail = ht_vol_cf.*S_ref.*c./l_t;
 c_htail = sqrt(s_htail./AR_ht);
@@ -167,10 +186,10 @@ c_vtail = sqrt(s_vtail./AR_vt);
 end 
 
 % Written by Philip
-function [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_air,l_boom)
+function [CL, Cd, Cdi , Cd0, L_D, v_ideal, Drag] = calc_aero(weight, b, v_air,l_t)
 global cst
 S_ref = weight / cst.W_L;
-[c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
+[c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_t);
 
 AR = b.^2./S_ref;
 CL = 9.81.* cst.W_L./(0.5.*cst.rho.*v_air.^2);
@@ -231,13 +250,16 @@ function [mass_motor,T_W,Power_max] = motor_weight(weight, Thrust, v_air)
 end
 
 % Written by Yamaan, modified by Philip
-function [mass_empty] = empty_weight(S_ref, b, l_boom)
+function [mass_empty, m_fixed, m_wing, m_htail, m_vtail, m_boom] = empty_weight(S_ref, b, l_t)
     global cst
-    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_boom);
+    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_t);
     
     %%%% Material Properties
     rho_cf = 2000; %kg/m^3, density of carbon fiber 
-    rho_boom = .170; %kg/m - linear density of tailboom
+    
+    rho_spar = .0644; %kg/m - linear density of tailboom
+    rho_tail_boom = .055; %kg/m - linear density of tailboom
+    
     rho_g_f = 0.047468; %kg/m^2 - 1.4 oz/yd^2 fiberglass - fuselage
     rho_g_t = 0.023734; %kg/m^2 - .7 oz/yd^2 fiberglass - tails
     fiber_resin_ratio = 1; %assume fiber and resin weight equal
@@ -252,23 +274,23 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     %To account for fuselage structure, assume fuselage covered in 1.4 oz
     %fiberglass
     
-    rho_g10 = 1800; %kg/m^3
-    n = 4; %number bulkheads;
-    m_bulkheads = n*(pi*cst.r_fus^2)*0.0015875* rho_g10;
-    
-    l_fus = l_boom/.75; %ballpark for fuselage length.
-    r_fus = cst.r_fus; %assume fuselage fineness ratio of 8
-    wall_thick = 0.01; %assume fuselage wall thickness is .5 cm of foam
-    vol_fuse = ((pi.*r_fus^2)-(pi.*(r_fus-wall_thick)^2))*l_fus; 
-    sa_fuse = (2*pi*r_fus)*l_fus;
-    
-    m_fuse_glass = sa_fuse* rho_g_f;
-    m_fuse_glass = m_fuse_glass + m_fuse_glass/fiber_resin_ratio; %account for expoxy weight
-    m_fuse =  vol_fuse*rho_f + m_fuse_glass + m_bulkheads;
+%     rho_g10 = 1800; %kg/m^3
+%     n = 4; %number bulkheads;
+%     m_bulkheads = n*(pi*cst.r_fus^2)*0.0015875* rho_g10;
+%     
+%     l_fus = cst.l_fus; %ballpark for fuselage length.
+%     r_fus = cst.r_fus; %assume fuselage fineness ratio of 8
+%     wall_thick = 0.01; %assume fuselage wall thickness is .5 cm of foam
+%     vol_fuse = ((pi.*r_fus^2)-(pi.*(r_fus-wall_thick)^2))*l_fus; 
+%     sa_fuse = (2*pi*r_fus)*l_fus;
+%     
+%     m_fuse_glass = sa_fuse* rho_g_f;
+%     m_fuse_glass = m_fuse_glass + m_fuse_glass/fiber_resin_ratio; %account for expoxy weight
+%     m_fuse =  vol_fuse*rho_f + m_fuse_glass + m_bulkheads;
     
     %%%% Calculate tailboom weight
     
-    m_boom = l_boom*rho_boom;
+    m_boom = (l_t - (c*.75)+.18*cst.l_fus)*rho_tail_boom; %Assume the boom only extends 18% into fuselage. From the CAD
     
     %%%% WING CALCS, CURRENTLY ASSUMING RECTANGULAR SECTIONS. IF TAPERED
     %%%% DESIRED, JUST ADD MORE INPUTS TO FUNCTION AND EDIT
@@ -278,15 +300,9 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     cr = c;
     ct = c;
     
-    %Calculate Wing Spar Volume
-    t_c = .08; %assume a thickness to chord for the wing
-    r_o = cst.spar_ratio*t_c*c/2; %m - estimate a thickness for the spar. 
-    r_i = r_o - 0.0015875; %m - assume a constant wall thickness of 1/16 inch - from Dragonplate's website
-    if r_i < 0
-        r_i = 0; %make sure r_i isn't negative
-    end
-    vol_w_spar = ((pi*r_o^2)-(pi*r_i^2))*b;
-    m_w_spar = rho_cf*vol_w_spar;
+    %Calculate Wing Spar weight
+    
+    m_w_spar = rho_spar*b; % new calculation from the CAD. Wing spar has been chosen online
     
     xvec = linspace(0,b/2,10000); %m, x positions along wing starting from root to b/2
     cvec = ((b/2 - xvec)*cr + xvec*ct)*2/b; %m, chord at each x position along wing starting from root to b/2
@@ -295,7 +311,7 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     
     %plot(xin,yin);
     a = polyarea(cst.xin,cst.yin); %m^2/m (chord)
-    vol = 2*trapz(xvec,a*cvec); %m^3, total wing volume
+    vol = 2*trapz(xvec,a*cvec.^2); %m^3, total wing volume
     m_wing = vol * rho_f +  m_w_spar; %kg, wing mass (assumes solid x section)
     
     
@@ -317,7 +333,7 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
 
     %plot(xtin,ytin);
     at = polyarea(cst.xtin,cst.ytin); %m^2/m (chord)
-    volt = 2*trapz(xtvec,at*ctvec); %m^3, total tail volume
+    volt = 2*trapz(xtvec,at*ctvec.^2); %m^3, total tail volume
     
     %Calculate horizontal tail structure - assume covered in .7 oz
     %fiberglass
@@ -330,7 +346,7 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     ctvvec = ((btv - xtvvec)*crtv + xtvvec*cttv)/btv; %m, chord at each x position along tail starting from root to b/2
     
     atv = polyarea(cst.xtin,cst.ytin); %m^2/m (chord)
-    voltv = trapz(xtvvec,atv*ctvvec); %m^3, total tail volume
+    voltv = trapz(xtvvec,atv*ctvvec.^2); %m^3, total tail volume
     
     %Calculate vertical tail structure - assume covered in .7 oz
     %fiberglass
@@ -342,10 +358,44 @@ function [mass_empty] = empty_weight(S_ref, b, l_boom)
     m_vtail = voltv * rho_f + m_vt_glass; %kg, tail vertical mass (assumes solid x section)
     
     %mass of fuselage + electronics
-    m_fixed = 0.430;  %fuselage weight estimated from CAD
+    m_fixed = 0.425;  %fuselage weight estimated from CAD + payload
 
     mass_empty = m_boom + m_wing + m_htail + m_vtail + m_fixed;
 
+end
+
+function [CG, x_check] = calc_CG(S_ref, b, l_t, m_fixed, m_wing, m_htail, m_vtail, m_boom, mass_motor, mass_bat)
+    global cst
+    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_t)
+    
+    % calculate the CG. Assume the zero is at wing leading edge. Postive
+    % going towards tail
+    x_fixed = ( c*.75 - cst.l_fus/2); %Assume fuselage ends at wing trailing edge. Assume CG fuselage at center.
+    w_fixed = m_fixed*x_fixed;
+    
+    x_wing = c*.25; %Assume CG wing at .5 chord
+    w_wing = m_wing*x_wing;
+    
+    x_htail = l_t + c_htail*.25; %Assume CG tail at .5 chord
+    w_htail = m_htail*x_htail;
+    
+    x_vtail = l_t + c_vtail*.25; %Assume CG tail at .5 chord
+    w_vtail = m_vtail*x_vtail;
+    
+    l_boom = l_t - (c*.75) + .18*cst.l_fus; %assume boom goes .18 into fuselage
+    x_boom = l_t - l_boom/2; 
+    w_boom = m_boom*x_boom;
+    
+    x_motor = (c*.75 - cst.l_fus); %assume motor attached to front of fuselage
+    w_motor = mass_motor*x_motor;
+    
+    x_bat = (c*.75 - .385); %location of battery based off CAD
+    w_bat = mass_bat*x_bat;
+    
+    x_check = [x_fixed x_wing x_htail x_vtail x_boom x_motor x_bat];
+    mass_total = m_fixed  + m_wing + m_htail + m_vtail + m_boom + mass_motor + mass_bat;
+    
+    CG = (w_fixed + w_wing + w_htail + w_vtail + w_boom + w_motor + w_bat)/mass_total;
 end
 
 % Written by Yamaan, modified by Philip
