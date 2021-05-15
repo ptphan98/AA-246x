@@ -201,14 +201,19 @@ Cdi = CL.^2./(pi.*AR.*e); %lift induced drag
 l_fus = cst.l_fus; %measured on CAD
 r_fus = cst.r_fus; 
 
+%boom data
+l_boom = l_t - (c*.75) + .18*cst.l_fus;
+r_boom = 0.0160782/2; %m - 0.633 in OD
+
 %we model the fuselage as cone nose and cylinder fuselage
 %assume nose is 1/5 length of entire fuselage
 l_nose = 1/5.*l_fus;
 Cdf_nose = 2./sqrt(3).*calc_Cf(l_nose,v_air).*(pi.*r_fus.*sqrt(r_fus.^2+l_nose.^2))./S_ref;
 Cdf_fuse = calc_Cf(l_fus,v_air).*(2.*pi.*r_fus.*l_fus)./S_ref;
+Cdf_boom = calc_Cf(l_boom,v_air).*(2.*pi.*r_boom.*l_boom)./S_ref;
 Cdf_wing = calc_Cf(c,v_air).*(2.*S_ref)./S_ref;
 Cdf_tail = calc_Cf(c_htail,v_air).*(2*s_htail+2*s_vtail)./S_ref; 
-Cd0 = 1.25.*(Cdf_nose + Cdf_fuse + Cdf_wing + Cdf_tail);
+Cd0 = 1.25.*(Cdf_nose + Cdf_fuse + Cdf_boom + Cdf_wing + Cdf_tail);
 Cd = Cd0 + Cdi;
 L_D = CL/Cd;
 
