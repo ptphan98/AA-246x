@@ -229,7 +229,7 @@ end
 % Written by Philip
 function [mass_bat] = battery_weight(weight, L_D)
     global cst
-    eta_sys = .374; %battery + propellor + motor effiency estimate
+    eta_sys = .33; %battery + propellor + motor effiency estimate + ESC
     safety_factor = 1.1;
     range = 42195/2*safety_factor; %meters
     H_batt = 155*3600; %specific energy density (Joules/kg)
@@ -264,8 +264,7 @@ function [mass_empty, m_fixed, m_wing, m_htail, m_vtail, m_boom] = empty_weight(
     rho_g_t = 0.023734; %kg/m^2 - .7 oz/yd^2 fiberglass - tails
     fiber_resin_ratio = 1; %assume fiber and resin weight equal
     
-    rho_f = 25.23; %oz/cu-ft, Foam density, potentially 40 
-    rho_f = rho_f* 1.00115; %oz/cu-ft to kg/m^3
+    rho_f = 28.03231; %kg/m^3 - Dow blue foam
     
     %%%% CALCULATE FUSELAGE WEIGHT - Currently assumes a cylinder fuselage
     %%%% - Update 5/12/2021: Fuselage weight is now estimated using CAD. This section isn't used.    
@@ -403,10 +402,9 @@ function [sigma_max, deflection_span] = calc_beam(S_ref, weight, b)
     global cst
     
     %Spar Dimensions
-    t_c = .08; %assume a thickness to chord for the wing
-    c = S_ref/b; %wing chord - m
-    r_o = cst.spar_ratio*t_c*c/2; %m - estimate a thickness for the spar. 
-    r_i = r_o - 0.0015875; %m - assume a constant wall thickness of 1/16 inch - from Dragonplate's website
+    % https://www.clearwatercomposites.com/product/9-16-x-0-633-carbon-fiber-tube/
+    r_o = 0.0160782/2; %m - 0.633 in OD
+    r_i = 0.0143002/2; %m - 0.563 in ID
     
     if r_i < 0
         r_i = 0; %make sure r_i isn't negative
@@ -421,7 +419,7 @@ function [sigma_max, deflection_span] = calc_beam(S_ref, weight, b)
     %xlim([0 b/2]);
     %ylim([0 cr]);
     
-    g_load = 1; %how much load do we expect?
+    g_load = 3; %how much load do we expect?
     xvec = linspace(0,b/2,10000); %m, x positions along wing starting from root to b/2
     %wvec = cvec * L_S; %N/m, rectangular lift distribution, do not use
     w0 = (4*weight*g_load*cst.g)/(pi*b);
