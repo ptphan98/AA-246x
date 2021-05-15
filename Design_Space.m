@@ -366,7 +366,7 @@ end
 
 function [CG, x_check] = calc_CG(S_ref, b, l_t, m_fixed, m_wing, m_htail, m_vtail, m_boom, mass_motor, mass_bat)
     global cst
-    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_t)
+    [c, s_htail, c_htail, s_vtail, c_vtail, l_t] = size_plane(S_ref, b, l_t);
     
     % calculate the CG. Assume the zero is at wing leading edge. Postive
     % going towards tail
